@@ -1,0 +1,287 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ContentStatus {
+  DRAFT
+  REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SourceType {
+  GOVERNMENT
+  EMBASSY
+  IMMIGRATION_AUTHORITY
+  CONSULATE
+  APPLICATION_PORTAL
+  OTHER
+}
+
+enum EntryType {
+  SINGLE
+  MULTIPLE
+  UNKNOWN
+}
+
+enum UserRole {
+  EDITOR
+  REVIEWER
+  ADMIN
+}
+
+model Region {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  continent   String
+  description String?
+  countries   Country[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Country {
+  id            String        @id @default(cuid())
+  name          String
+  officialName  String
+  iso2          String        @unique
+  iso3          String        @unique
+  numericCode   String        @unique
+  continent     String
+  subregion     String
+  capital       String
+  flag          String
+  slug          String        @unique
+  description   String?
+  status        ContentStatus @default(PUBLISHED)
+  regionId      String?
+  region        Region?       @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  visas         Visa[]
+  sources       Source[]
+  relatedFrom   RelatedCountry[] @relation("RelatedCountryFrom")
+  relatedTo     RelatedCountry[] @relation("RelatedCountryTo")
+  revisions     Revision[]
+  seo           SeoMetadata?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([continent])
+  @@index([regionId])
+  @@index([status])
+  @@index([name])
+}
+
+model VisaCategory {
+  id          String        @id @default(cuid())
+  name        String
+  slug        String        @unique
+  description String
+  icon        String
+  sortOrder   Int           @default(0)
+  status      ContentStatus @default(PUBLISHED)
+  visas       Visa[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model Visa {
+  id                  String        @id @default(cuid())
+  countryId           String
+  categoryId          String
+  name                String
+  slug                String
+  subcategory         String?
+  shortDescription    String?
+  longDescription     String?
+  purpose             String?
+  eligibility         String?
+  validity            String?
+  stayDuration        String?
+  entryType           EntryType     @default(UNKNOWN)
+  applicationMethod   String?
+  processingTime      String?
+  status              ContentStatus @default(DRAFT)
+  featured            Boolean       @default(false)
+  isDemo              Boolean       @default(false)
+  lastVerified        DateTime?
+  country             Country       @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  category            VisaCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  requirements        VisaRequirement[]
+  documents           VisaDocument[]
+  fees                VisaFee[]
+  steps               VisaStep[]
+  sources             VisaSource[]
+  faqs                Faq[]
+  relatedVisasFrom    RelatedVisa[]  @relation("RelatedVisaFrom")
+  relatedVisasTo      RelatedVisa[]  @relation("RelatedVisaTo")
+  relatedCountries    RelatedCountry[]
+  revisions           Revision[]
+  seo                 SeoMetadata?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@unique([countryId, slug])
+  @@index([status, featured])
+  @@index([categoryId, status])
+  @@index([countryId, status])
+  @@index([name])
+}
+
+model VisaRequirement {
+  id          String   @id @default(cuid())
+  visaId      String
+  title       String
+  description String?
+  sortOrder   Int      @default(0)
+  visa        Visa     @relation(fields: [visaId], references: [id], onDelete: Cascade)
+
+  @@index([visaId, sortOrder])
+}
+
+model VisaDocument {
+  id          String   @id @default(cuid())
+  visaId      String
+  name        String
+  description String?
+  required    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  visa        Visa     @relation(fields: [visaId], references: [id], onDelete: Cascade)
+
+  @@index([visaId, sortOrder])
+}
+
+model VisaFee {
+  id          String   @id @default(cuid())
+  visaId      String
+  label       String
+  amount      Decimal? @db.Decimal(12, 2)
+  currency    String?
+  notes       String?
+  sortOrder   Int      @default(0)
+  visa        Visa     @relation(fields: [visaId], references: [id], onDelete: Cascade)
+
+  @@index([visaId, sortOrder])
+}
+
+model VisaStep {
+  id          String   @id @default(cuid())
+  visaId      String
+  stepNumber  Int
+  title       String
+  description String?
+  visa        Visa     @relation(fields: [visaId], references: [id], onDelete: Cascade)
+
+  @@unique([visaId, stepNumber])
+}
+
+model Source {
+  id          String       @id @default(cuid())
+  title       String
+  url         String
+  publisher   String
+  countryId   String?
+  sourceType  SourceType
+  accessedAt  DateTime?
+  country     Country?     @relation(fields: [countryId], references: [id], onDelete: SetNull)
+  visas       VisaSource[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([countryId])
+  @@index([sourceType])
+}
+
+model VisaSource {
+  visaId    String
+  sourceId  String
+  sortOrder Int      @default(0)
+  visa      Visa     @relation(fields: [visaId], references: [id], onDelete: Cascade)
+  source    Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@id([visaId, sourceId])
+  @@index([sourceId])
+}
+
+model Faq {
+  id        String   @id @default(cuid())
+  visaId    String
+  question  String
+  answer    String
+  sortOrder Int      @default(0)
+  visa      Visa     @relation(fields: [visaId], references: [id], onDelete: Cascade)
+
+  @@index([visaId, sortOrder])
+}
+
+model RelatedVisa {
+  fromVisaId String
+  toVisaId   String
+  sortOrder  Int  @default(0)
+  fromVisa   Visa @relation("RelatedVisaFrom", fields: [fromVisaId], references: [id], onDelete: Cascade)
+  toVisa     Visa @relation("RelatedVisaTo", fields: [toVisaId], references: [id], onDelete: Cascade)
+
+  @@id([fromVisaId, toVisaId])
+  @@index([toVisaId])
+}
+
+model RelatedCountry {
+  visaId          String
+  fromCountryId   String
+  toCountryId     String
+  sortOrder       Int      @default(0)
+  visa            Visa     @relation(fields: [visaId], references: [id], onDelete: Cascade)
+  fromCountry     Country  @relation("RelatedCountryFrom", fields: [fromCountryId], references: [id], onDelete: Cascade)
+  toCountry       Country  @relation("RelatedCountryTo", fields: [toCountryId], references: [id], onDelete: Cascade)
+
+  @@id([visaId, toCountryId])
+  @@index([fromCountryId])
+  @@index([toCountryId])
+}
+
+model Revision {
+  id          String        @id @default(cuid())
+  visaId      String?
+  countryId   String?
+  version     Int
+  status      ContentStatus
+  snapshot    Json
+  createdById String?
+  visa        Visa?         @relation(fields: [visaId], references: [id], onDelete: Cascade)
+  country     Country?      @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  createdBy   AdminUser?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime      @default(now())
+
+  @@unique([visaId, version])
+  @@unique([countryId, version])
+  @@index([createdAt])
+}
+
+model SeoMetadata {
+  id                 String  @id @default(cuid())
+  countryId          String? @unique
+  visaId             String? @unique
+  titleOverride      String?
+  descriptionOverride String?
+  ogImage            String?
+  canonicalOverride  String?
+  noIndex            Boolean @default(false)
+  country            Country? @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  visa               Visa?   @relation(fields: [visaId], references: [id], onDelete: Cascade)
+}
+
+model AdminUser {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String?
+  role         UserRole   @default(EDITOR)
+  passwordHash String
+  revisions    Revision[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
